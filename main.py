@@ -1,96 +1,142 @@
+'''
+Flappy Bird for ESP8266 modules
+github.com/zelacerda/micropython
+
+Version 1.0
+2017 - by zelacerda
+'''
+
 import ssd1306
-import framebuf
+from framebuf import FrameBuffer as FB
 from machine import I2C, Pin
 
-i2c = I2C(scl=Pin(5), sda=Pin(4))
-oled = ssd1306.SSD1306_I2C(128, 64, i2c)
-button = Pin(13, Pin.IN)
-bird = [0x0000, 0x0000, 0x07e0, 0x18f0,
-        0x21f8, 0x71ec, 0xf9ec, 0xfcfc,
-        0xbe7e, 0x4c81, 0x717e, 0x4082,
-        0x307c, 0x0f80, 0x0000, 0x0000]
+# Screen dimensions
+WIDTH = 128
+HEIGHT = 64
 
-def random(a,b):                                                            
-    result = uos.urandom(1)[0]                                              
-    result /= 256                                                           
-    result *= b-a                                                           
-    result += a                                                             
+# Initialize pins
+i2c = I2C(scl=Pin(5), sda=Pin(4))
+oled = ssd1306.SSD1306_I2C(WIDTH, HEIGHT, i2c)
+button = Pin(13, Pin.IN)
+
+# Some helper functions
+def random(a,b):
+    result = uos.urandom(1)[0] / 256
+    result *= b-a
+    result += a
     return int(result)
 
-def cls():
-    oled.fill(0)
-    oled.show()
+def to_bytearray(s):
+    return bytearray([int('0x'+s[i:i+2]) for i in range(0,len(s),2)])
 
-def sprite(bitmap, x=0, y=0):
-    height = len(bitmap)
-    width = len(bin(max(bitmap))) - 2
-    fbuf = framebuf.FrameBuffer(bytearray(width*height//8),
-                                width,height,framebuf.MVLSB)
-    formatter = '%0' + str(width) + 'd'
-    for line, i in enumerate(bitmap):
-        bitline = formatter % int(bin(i)[2:])
-        for column, j in enumerate(bitline):
-            fbuf.pixel(x + column, y + line, int(j))
-    return fbuf
+# Bitmap images
+BIRD = '07e018f021f871ecf9ecfcfcbe7e4c81717e4082307c0f80'
+COL1 = '200c'*26+'ffff'+'8007'*4+'ffff'
+COL2 = 'ffff'+'8007'*4+'ffff'+'200c'*26
+bird_size = (16,12)
+colu_size  = (16,32)
 
-fbird = sprite(bird)
+# Generate sprites
+bird = FB(to_bytearray(BIRD),bird_size[0],bird_size[1],3)
+col1 = FB(to_bytearray(COL1),colu_size[0],colu_size[1],3)
+col2 = FB(to_bytearray(COL2),colu_size[0],colu_size[1],3)
 
-up = framebuf.FrameBuffer(bytearray(16*32//8),
-                          16,32,framebuf.MVLSB)
-up.rect(2,0,12,27,1)
-up.rect(0,26,16,6,1)
+class FlappyBird:
+    def __init__(self):
+        self.height = bird_size[1]
+        self.y = HEIGHT // 2 - self.height // 2
+        self.vel = -wing_power
+    
+    def move(self):
+        self.vel += gravity
+        self.y = int(self.y + self.vel)
+        
+    def crashed(self):
+        y_limit = HEIGHT - self.height
+        return self.y > y_limit
+            
+    def flap(self):
+        self.vel = -wing_power
 
-down = framebuf.FrameBuffer(bytearray(16*32//8),
-                          16,32,framebuf.MVLSB)                         
-down.rect(2,5,12,27,1)
-down.rect(0,0,16,6,1)
+class Obstacle:
+    def __init__(self, x):
+        self.gap = random(6+gap_size, HEIGHT-6-gap_size) 
+        self.x = x
+        self.score = 0
+        
+    def scroll(self):
+        self.x -= velocity
+        if self.x < -colu_size[0]:
+            self.score += 1
+            self.x = WIDTH
+            self.gap = random(6+gap_size, HEIGHT-6-gap_size)
 
-y = 24
-vel = 0
-pressed = False
-x_tower1 = 128
-x_tower2 = 196
-y_tower1 = random(20,42)
-y_tower2 = random(20,42)
-
-def move():
-    global vel, y
-    vel += .5
-    y += vel
-    if y < 0:
-        y = 0
-        vel = 0
-    if y > 47:
-        y = 47
-        vel = 0
-
-def scroll():
-    global x_tower1, x_tower2, y_tower1, y_tower2
-    x_tower1 -= 3
-    x_tower2 -= 3
-    if x_tower1 < -15:
-        x_tower1 = 128
-        y_tower1 = random(20,42)
-    if x_tower2 < -15:
-        x_tower2 = 128
-        y_tower2 = random(20,42)
-
-def flap():
-    global vel, pressed
-    vel = -4
-    pressed = True    
-
-while True:
+def clicked():
+    global pressed
     if button.value() == 1 and not pressed:
-        flap()
-    if button.value() == 0 and pressed:
+        pressed = True
+        return True
+    elif button.value() == 0 and pressed:
         pressed = False
-    move()
-    scroll()
+    return False
+
+def draw():
     oled.fill(0)
-    oled.framebuf.blit(fbird, 0, round(y))
-    oled.framebuf.blit(up,x_tower1,y_tower1-46)
-    oled.framebuf.blit(down,x_tower1,y_tower1+18)
-    oled.framebuf.blit(up,x_tower2,y_tower2-46)
-    oled.framebuf.blit(down,x_tower2,y_tower2+18)
+    oled.framebuf.blit(bird, 0, flappy_bird.y)
+    oled.framebuf.blit(col1,obstacle_1.x,obstacle_1.gap-gap_size-colu_size[1])
+    oled.framebuf.blit(col2,obstacle_1.x,obstacle_1.gap+gap_size)
+    oled.framebuf.blit(col1,obstacle_2.x,obstacle_2.gap-gap_size-colu_size[1])
+    oled.framebuf.blit(col2,obstacle_2.x,obstacle_2.gap+gap_size)
+    oled.text(str(obstacle_1.score + obstacle_2.score), WIDTH//2 - 8, 0)
     oled.show()
+
+# Game parameters
+gap_size   = 15
+velocity   = 3
+gravity    = .6
+wing_power = 4
+state = 0
+pressed = False
+
+# Game state functions
+def splash_screen():
+    global state
+    oled.fill(0)
+    oled.text('F L A P P Y', 20, 20)
+    oled.text('B I R D', 36, 40)
+    oled.show()
+    if clicked(): state = 1
+
+def game_start():
+    global state,score,flappy_bird,obstacle_1,obstacle_2, pressed
+    flappy_bird = FlappyBird()
+    obstacle_1 = Obstacle(WIDTH)
+    obstacle_2 = Obstacle(WIDTH + (WIDTH + colu_size[0]) // 2)
+    state = 2
+
+def game_running():
+    global state
+    if clicked(): flappy_bird.flap()
+    flappy_bird.move()
+    if flappy_bird.crashed(): state = 3
+    obstacle_1.scroll()
+    obstacle_2.scroll()
+    draw()
+    
+def game_over():
+    global state
+    oled.framebuf.fill_rect(20, 10, 88, 44, 0)
+    oled.framebuf.rect(20, 10, 88, 44, 1)
+    oled.text('G A M E', 36, 20)
+    oled.text('O V E R', 36, 36)
+    oled.show()
+    if clicked(): state = 1
+
+def loop():
+    while True:
+        if   state == 0: splash_screen()
+        elif state == 1: game_start()
+        elif state == 2: game_running()
+        elif state == 3: game_over()
+        
+loop()
