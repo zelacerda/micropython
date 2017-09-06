@@ -9,6 +9,7 @@ Version 1.0
 import ssd1306
 from framebuf import FrameBuffer as FB
 from machine import I2C, Pin
+from utime import sleep
 
 # Screen dimensions
 WIDTH = 128
@@ -50,14 +51,14 @@ class FlappyBird:
     def move(self):
         self.vel += gravity
         self.y = int(self.y + self.vel)
+
+    def flap(self):
+        self.vel = -wing_power
         
     def crashed(self):
         y_limit = HEIGHT - self.height
         return self.y > y_limit
             
-    def flap(self):
-        self.vel = -wing_power
-
 class Obstacle:
     def __init__(self, x):
         self.gap = random(6+gap_size, HEIGHT-6-gap_size) 
@@ -70,6 +71,14 @@ class Obstacle:
             self.score += 1
             self.x = WIDTH
             self.gap = random(6+gap_size, HEIGHT-6-gap_size)
+
+    def collided(self, y):
+        if self.x < bird_size[0] and \
+           (self.gap - y > gap_size or y + bird_size[1] - self.gap > gap_size):
+            return True
+        else:
+            return False
+                   
 
 def clicked():
     global pressed
@@ -102,6 +111,7 @@ pressed = False
 def splash_screen():
     global state
     oled.fill(0)
+    oled.framebuf.rect(0, 0, 128, 64, 1)
     oled.text('F L A P P Y', 20, 20)
     oled.text('B I R D', 36, 40)
     oled.show()
@@ -118,9 +128,12 @@ def game_running():
     global state
     if clicked(): flappy_bird.flap()
     flappy_bird.move()
-    if flappy_bird.crashed(): state = 3
+    if flappy_bird.crashed():
+        state = 3
     obstacle_1.scroll()
     obstacle_2.scroll()
+    if obstacle_1.collided(flappy_bird.y) or obstacle_2.collided(flappy_bird.y):
+        state = 3
     draw()
     
 def game_over():
@@ -130,7 +143,7 @@ def game_over():
     oled.text('G A M E', 36, 20)
     oled.text('O V E R', 36, 36)
     oled.show()
-    if clicked(): state = 1
+    if clicked(): state = 0
 
 def loop():
     while True:
