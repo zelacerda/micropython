@@ -30,10 +30,25 @@ def random(a,b):
 def to_bytearray(s):
     return bytearray([int('0x'+s[i:i+2]) for i in range(0,len(s),2)])
 
+def write_high_score(n):
+    f = open('fb_high_score', 'w')
+    f.write(str(n))
+    f.close()
+
+def read_high_score():
+    if 'fb_high_score' in uos.listdir():
+        f = open('fb_high_score', 'r')
+        high_score = f.read()
+        f.close()
+        return int(high_score)
+    else:
+        write_high_score(0)
+        return 0
+
 # Bitmap images
 BIRD = '07e018f021f871ecf9ecfcfcbe7e4c81717e4082307c0f80'
-COL1 = '200c'*26+'ffff'+'8007'*4+'ffff'
-COL2 = 'ffff'+'8007'*4+'ffff'+'200c'*26
+COL1 = '201c'*26+'ffff'+'800f'*4+'ffff'
+COL2 = 'ffff'+'800f'*4+'ffff'+'201c'*26
 bird_size = (16,12)
 colu_size  = (16,32)
 
@@ -78,7 +93,6 @@ class Obstacle:
             return True
         else:
             return False
-                   
 
 def clicked():
     global pressed
@@ -96,13 +110,15 @@ def draw():
     oled.framebuf.blit(col2,obstacle_1.x,obstacle_1.gap+gap_size)
     oled.framebuf.blit(col1,obstacle_2.x,obstacle_2.gap-gap_size-colu_size[1])
     oled.framebuf.blit(col2,obstacle_2.x,obstacle_2.gap+gap_size)
-    oled.text(str(obstacle_1.score + obstacle_2.score), WIDTH//2 - 8, 0)
+    oled.framebuf.fill_rect(WIDTH//2 - 13, 0, 26, 9, 0)
+    oled.text('%03d' % (obstacle_1.score + obstacle_2.score), WIDTH//2 - 12, 0)
     oled.show()
 
 # Game parameters
-gap_size   = 15
+high_score = read_high_score()
+gap_size   = 13
 velocity   = 3
-gravity    = .6
+gravity    = .8
 wing_power = 4
 state = 0
 pressed = False
@@ -111,24 +127,29 @@ pressed = False
 def splash_screen():
     global state
     oled.fill(0)
-    oled.framebuf.rect(0, 0, 128, 64, 1)
-    oled.text('F L A P P Y', 20, 20)
-    oled.text('B I R D', 36, 40)
+    oled.framebuf.blit(col2, (WIDTH-colu_size[0])//2, HEIGHT-12)
+    oled.framebuf.blit(bird, (WIDTH-bird_size[0])//2, HEIGHT-12-bird_size[1])
+    oled.framebuf.rect(0, 0, WIDTH, HEIGHT, 1)
+    oled.text('F L A P P Y', WIDTH//2-44, 3)
+    oled.text('B I R D', WIDTH//2-28, 13)
+    oled.text('Record: ' + '%03d' % high_score, WIDTH//2-44, HEIGHT//2-6)
     oled.show()
-    if clicked(): state = 1
+    state = 1
 
-def game_start():
+def game_waiting():
     global state,score,flappy_bird,obstacle_1,obstacle_2, pressed
-    flappy_bird = FlappyBird()
-    obstacle_1 = Obstacle(WIDTH)
-    obstacle_2 = Obstacle(WIDTH + (WIDTH + colu_size[0]) // 2)
-    state = 2
+    if clicked():
+        flappy_bird = FlappyBird()
+        obstacle_1 = Obstacle(WIDTH)
+        obstacle_2 = Obstacle(WIDTH + (WIDTH + colu_size[0]) // 2)
+        state = 2
 
 def game_running():
     global state
     if clicked(): flappy_bird.flap()
     flappy_bird.move()
     if flappy_bird.crashed():
+        flappy_bird.y = HEIGHT - flappy_bird.height
         state = 3
     obstacle_1.scroll()
     obstacle_2.scroll()
@@ -137,18 +158,26 @@ def game_running():
     draw()
     
 def game_over():
-    global state
-    oled.framebuf.fill_rect(20, 10, 88, 44, 0)
-    oled.framebuf.rect(20, 10, 88, 44, 1)
-    oled.text('G A M E', 36, 20)
-    oled.text('O V E R', 36, 36)
+    global state, high_score
+    oled.framebuf.fill_rect(WIDTH//2-32, 10, 64, 23, 0)
+    oled.framebuf.rect(WIDTH//2-32, 10, 64, 23, 1)
+    oled.text('G A M E', WIDTH//2-28, 13)
+    oled.text('O V E R', WIDTH//2-28, 23)
+    score = obstacle_1.score + obstacle_2.score
+    if score > high_score:
+        high_score = score
+        oled.framebuf.fill_rect(WIDTH//2-48, 37, 96, 14, 0)
+        oled.framebuf.rect(WIDTH//2-48, 37, 96, 14, 1)
+        oled.text('New record!',WIDTH//2-44, 40)
+        write_high_score(high_score)
     oled.show()
-    if clicked(): state = 0
+    sleep(.5)
+    state = 1
 
 def loop():
     while True:
         if   state == 0: splash_screen()
-        elif state == 1: game_start()
+        elif state == 1: game_waiting()
         elif state == 2: game_running()
         elif state == 3: game_over()
         
