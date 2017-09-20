@@ -10,10 +10,11 @@ import ssd1306
 from framebuf import FrameBuffer as FB
 from machine import I2C, Pin
 from utime import sleep
+from urequests import post
 
 # Screen dimensions
-WIDTH = 128
-HEIGHT = 64
+WIDTH   = 128
+HEIGHT  = 64
 
 # Initialize pins
 i2c = I2C(scl=Pin(5), sda=Pin(4))
@@ -45,6 +46,14 @@ def read_high_score():
         write_high_score(0)
         return 0
 
+def send_score(n):
+    url = "http://things.ubidots.com/api/v1.6/devices/NodeMCU?token="
+    token = "A1E-5ZY9vbCGtRiqVinrnhrQxgA4FDSBaA"
+    url += token
+    headers = {"Content-Type": "application/json"}
+    data = '{"flappy-bird-score": ' + str(n) + '}'
+    post(url, data=data, headers=headers)
+
 # Bitmap images
 BIRD = '07e018f021f871ecf9ecfcfcbe7e4c81717e4082307c0f80'
 COL1 = '201c'*26+'ffff'+'800f'*4+'ffff'
@@ -62,24 +71,24 @@ class FlappyBird:
         self.height = bird_size[1]
         self.y = HEIGHT // 2 - self.height // 2
         self.vel = -wing_power
-    
+
     def move(self):
         self.vel += gravity
         self.y = int(self.y + self.vel)
 
     def flap(self):
         self.vel = -wing_power
-        
+
     def crashed(self):
         y_limit = HEIGHT - self.height
         return self.y > y_limit
-            
+
 class Obstacle:
     def __init__(self, x):
-        self.gap = random(6+gap_size, HEIGHT-6-gap_size) 
+        self.gap = random(6+gap_size, HEIGHT-6-gap_size)
         self.x = x
         self.score = 0
-        
+
     def scroll(self):
         self.x -= velocity
         if self.x < -colu_size[0]:
@@ -89,6 +98,7 @@ class Obstacle:
 
     def collided(self, y):
         if self.x < bird_size[0] and \
+           self.x > -colu_size[0] and \
            (self.gap - y > gap_size or y + bird_size[1] - self.gap > gap_size):
             return True
         else:
@@ -115,13 +125,13 @@ def draw():
     oled.show()
 
 # Game parameters
-high_score = read_high_score()
-gap_size   = 13
-velocity   = 3
-gravity    = .8
-wing_power = 4
-state = 0
-pressed = False
+high_score  = read_high_score()
+gap_size    = 13
+velocity    = 3
+gravity     = .8
+wing_power  = 4
+state       = 0
+pressed     = False
 
 # Game state functions
 def splash_screen():
@@ -156,7 +166,7 @@ def game_running():
     if obstacle_1.collided(flappy_bird.y) or obstacle_2.collided(flappy_bird.y):
         state = 3
     draw()
-    
+
 def game_over():
     global state, high_score
     oled.framebuf.fill_rect(WIDTH//2-32, 10, 64, 23, 0)
@@ -171,7 +181,10 @@ def game_over():
         oled.text('New record!',WIDTH//2-44, 40)
         write_high_score(high_score)
     oled.show()
-    sleep(.5)
+    try:
+        send_score(score)
+    except:
+        pass
     state = 1
 
 def loop():
@@ -180,5 +193,5 @@ def loop():
         elif state == 1: game_waiting()
         elif state == 2: game_running()
         elif state == 3: game_over()
-        
+
 loop()
